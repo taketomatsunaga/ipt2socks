@@ -21,6 +21,8 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 
+#include <netdb.h>
+
 /* splice() api */
 #ifndef SPLICE_F_MOVE
   #include <sys/syscall.h>
@@ -96,6 +98,7 @@ static skaddr4_t g_bind_skaddr4           = {0};
 static skaddr6_t g_bind_skaddr6           = {0};
 
 static char      g_server_ipstr[IP6STRLEN] = "127.0.0.1";
+static char      g_server_host[IP6STRLEN] = "";
 static portno_t  g_server_portno           = 1080;
 static skaddr6_t g_server_skaddr           = {0};
 
@@ -109,6 +112,7 @@ static char             g_udp_dgram_buffer[UDP_DATAGRAM_MAXSIZ] = {0};
 static void print_command_help(void) {
     printf("usage: ipt2socks <options...>. the existing options are as follows:\n"
            " -s, --server-addr <addr>           socks5 server ip, default: 127.0.0.1\n"
+           " -H, --server-host <hostname>       socks5 server hostname\n"
            " -p, --server-port <port>           socks5 server port, default: 1080\n"
            " -a, --auth-username <user>         username for socks5 authentication\n"
            " -k, --auth-password <passwd>       password for socks5 authentication\n"
@@ -140,6 +144,7 @@ static void parse_command_args(int argc, char* argv[]) {
     const char *optstr = ":s:p:a:k:b:B:l:S:c:o:j:n:u:TU46RrwWvVh";
     const struct option options[] = {
         {"server-addr",   required_argument, NULL, 's'},
+        {"server-host",   required_argument, NULL, 'H'},
         {"server-port",   required_argument, NULL, 'p'},
         {"auth-username", required_argument, NULL, 'a'},
         {"auth-password", required_argument, NULL, 'k'},
@@ -182,6 +187,9 @@ static void parse_command_args(int argc, char* argv[]) {
                     goto PRINT_HELP_AND_EXIT;
                 }
                 strcpy(g_server_ipstr, optarg);
+                break;
+            case 'H':
+                strcpy(g_server_host, optarg);
                 break;
             case 'p':
                 if (strlen(optarg) + 1 > PORTSTRLEN) {
@@ -348,6 +356,28 @@ static void parse_command_args(int argc, char* argv[]) {
     }
 
     if (!(g_options & OPT_ENABLE_TCP)) g_nthreads = 1;
+
+    if (g_server_host) {
+        struct addrinfo hints, *info;
+  
+        memset( &hints, 0, sizeof(hints) );
+
+        hints.ai_family   = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+
+        getaddrinfo( g_server_host, NULL, &hints, &info );
+
+        struct in_addr addr;
+
+        addr.s_addr = ((struct sockaddr_in *)(info->ai_addr))->sin_addr.s_addr;
+
+        printf( "ipaddress: %s \n", inet_ntoa(addr) );
+
+        strcpy(g_server_ipstr, inet_ntoa(addr));
+        printf( "ipaddress of g_server_ipstr: %s \n", g_server_ipstr );
+
+        freeaddrinfo(info);
+    }
 
     build_socket_addr(AF_INET, &g_bind_skaddr4, g_bind_ipstr4, g_bind_portno);
     build_socket_addr(AF_INET6, &g_bind_skaddr6, g_bind_ipstr6, g_bind_portno);
